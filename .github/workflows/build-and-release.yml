@@ -40,17 +40,19 @@ jobs:
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
+        CGO_ENABLED: 0
       run: |
         cd prometheus
-        go build -o ../bin/bucket-summary-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} bucket_summary.go
+        go build -ldflags="-s -w" -trimpath -o ../bin/bucket-summary-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} bucket_summary.go
 
     - name: Build stats tool
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
+        CGO_ENABLED: 0
       run: |
         cd stats
-        go build -o ../bin/min-stats-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} main.go
+        go build -ldflags="-s -w" -trimpath -o ../bin/min-stats-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} main.go
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
