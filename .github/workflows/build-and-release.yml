@@ -1,0 +1,140 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+            ext: .exe
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+
+    - name: Build prometheus bucket-summary
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+      run: |
+        cd prometheus
+        go build -o ../bin/bucket-summary-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} bucket_summary.go
+
+    - name: Build stats tool
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+      run: |
+        cd stats
+        go build -o ../bin/min-stats-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} main.go
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
+        path: bin/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Prepare binaries
+      run: |
+        mkdir -p release
+        find artifacts -type f -executable -o -name "*.exe" | while read file; do
+          cp "$file" release/
+        done
+        ls -la release/
+
+    - name: Get commit info
+      id: commit
+      run: |
+        echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+        echo "message=$(git log -1 --pretty=%B | head -1)" >> $GITHUB_OUTPUT
+        echo "date=$(date +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_OUTPUT
+
+    - name: Delete existing rolling release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh release delete main-latest -y --cleanup-tag || true
+
+    - name: Create rolling release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        cat << EOF > release_notes.md
+        ## Latest build from main branch
+
+        **Commit:** ${{ steps.commit.outputs.sha_short }}
+        **Message:** ${{ steps.commit.outputs.message }}
+        **Build Date:** ${{ steps.commit.outputs.date }}
+
+        This is an automated rolling release that tracks the latest changes on the main branch.
+
+        ### Available Binaries
+
+        #### bucket-summary tool
+        - Linux AMD64: \`bucket-summary-linux-amd64\`
+        - Linux ARM64: \`bucket-summary-linux-arm64\`
+        - macOS AMD64: \`bucket-summary-darwin-amd64\`
+        - macOS ARM64 (Apple Silicon): \`bucket-summary-darwin-arm64\`
+        - Windows AMD64: \`bucket-summary-windows-amd64.exe\`
+
+        #### min-stats tool
+        - Linux AMD64: \`min-stats-linux-amd64\`
+        - Linux ARM64: \`min-stats-linux-arm64\`
+        - macOS AMD64: \`min-stats-darwin-amd64\`
+        - macOS ARM64 (Apple Silicon): \`min-stats-darwin-arm64\`
+        - Windows AMD64: \`min-stats-windows-amd64.exe\`
+
+        ### Installation
+
+        Download the appropriate binary for your platform and make it executable:
+
+        \`\`\`bash
+        # Linux/macOS example
+        chmod +x bucket-summary-linux-amd64
+        ./bucket-summary-linux-amd64
+        \`\`\`
+        EOF
+
+        gh release create main-latest \
+          --title "Latest Main Branch Build" \
+          --notes-file release_notes.md \
+          --prerelease \
+          --target main \
+          release/*
