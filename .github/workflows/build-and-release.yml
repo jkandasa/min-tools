@@ -74,9 +74,11 @@ jobs:
     - name: Prepare binaries
       run: |
         mkdir -p release
-        find artifacts -type f -executable -o -name "*.exe" | while read file; do
+        # Copy all binaries from artifact directories
+        find artifacts -type f \( -name "bucket-summary-*" -o -name "min-stats-*" \) | while read file; do
           cp "$file" release/
         done
+        echo "Files in release directory:"
         ls -la release/
 
     - name: Get commit info
