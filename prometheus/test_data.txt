@@ -1,0 +1,29 @@
+# Simple test data for MinIO bucket summary
+# HELP minio_bucket_usage_object_total Total number of objects
+# TYPE minio_bucket_usage_object_total gauge
+minio_bucket_usage_object_total{bucket="test-bucket-1",server="minio1.example.com:9000"} 1000
+minio_bucket_usage_object_total{bucket="test-bucket-2",server="minio1.example.com:9000"} 2500
+minio_bucket_usage_object_total{bucket="test-bucket-3",server="minio1.example.com:9000"} 500
+
+# HELP minio_bucket_usage_total_bytes Total bucket size in bytes
+# TYPE minio_bucket_usage_total_bytes gauge
+minio_bucket_usage_total_bytes{bucket="test-bucket-1",server="minio1.example.com:9000"} 1073741824
+minio_bucket_usage_total_bytes{bucket="test-bucket-2",server="minio1.example.com:9000"} 5368709120
+minio_bucket_usage_total_bytes{bucket="test-bucket-3",server="minio1.example.com:9000"} 536870912
+
+# HELP minio_bucket_objects_version_distribution Distribution of object versions in the bucket
+# TYPE minio_bucket_objects_version_distribution gauge
+minio_bucket_objects_version_distribution{bucket="test-bucket-1",range="SINGLE_VERSION",server="minio1.example.com:9000"} 1000
+minio_bucket_objects_version_distribution{bucket="test-bucket-1",range="UNVERSIONED",server="minio1.example.com:9000"} 0
+minio_bucket_objects_version_distribution{bucket="test-bucket-2",range="SINGLE_VERSION",server="minio1.example.com:9000"} 2000
+minio_bucket_objects_version_distribution{bucket="test-bucket-2",range="BETWEEN_2_AND_10",server="minio1.example.com:9000"} 500
+minio_bucket_objects_version_distribution{bucket="test-bucket-3",range="UNVERSIONED",server="minio1.example.com:9000"} 500
+
+# HELP minio_bucket_objects_size_distribution Distribution of object sizes in the bucket
+# TYPE minio_bucket_objects_size_distribution gauge
+minio_bucket_objects_size_distribution{bucket="test-bucket-1",range="BETWEEN_1_MB_AND_10_MB",server="minio1.example.com:9000"} 800
+minio_bucket_objects_size_distribution{bucket="test-bucket-1",range="BETWEEN_1024_B_AND_1_MB",server="minio1.example.com:9000"} 200
+minio_bucket_objects_size_distribution{bucket="test-bucket-2",range="BETWEEN_1_MB_AND_10_MB",server="minio1.example.com:9000"} 1500
+minio_bucket_objects_size_distribution{bucket="test-bucket-2",range="BETWEEN_10_MB_AND_64_MB",server="minio1.example.com:9000"} 1000
+minio_bucket_objects_size_distribution{bucket="test-bucket-3",range="LESS_THAN_1024_B",server="minio1.example.com:9000"} 300
+minio_bucket_objects_size_distribution{bucket="test-bucket-3",range="BETWEEN_1024_B_AND_1_MB",server="minio1.example.com:9000"} 200
