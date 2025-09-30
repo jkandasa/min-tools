@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net"
 	"net/url"
 	"os"
 	"slices"
@@ -281,10 +282,36 @@ func printOverall(infoStruct clusterStruct) {
 }
 
 func trimDomainData(endpoint, domainString string) string {
-	if domainString == "" {
-		return strings.SplitN(endpoint, ".", 2)[0]
+	// Normalize endpoint to extract host (remove scheme, path and port)
+	host := endpoint
+
+	// If endpoint contains a scheme or a path, try parsing it as a URL
+	if strings.Contains(host, "://") {
+		if u, err := url.Parse(host); err == nil {
+			host = u.Host
+		}
+	} else if strings.Contains(host, "/") {
+		// try parsing by adding a scheme so url.Parse treats the first part as host
+		if u, err := url.Parse("http://" + host); err == nil {
+			host = u.Host
+		}
 	}
-	return strings.TrimSuffix(strings.TrimSuffix(endpoint, domainString), ".")
+
+	// Strip port if present (handles host:port and [ipv6]:port)
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+
+	// If host is an IP address (v4 or v6), return it as-is
+	if ip := net.ParseIP(strings.Trim(host, "[]")); ip != nil {
+		return ip.String()
+	}
+
+	// Fallback to previous behaviour for domain names
+	if domainString == "" {
+		return strings.SplitN(host, ".", 2)[0]
+	}
+	return strings.TrimSuffix(strings.TrimSuffix(host, domainString), ".")
 }
 
 func drawTable() {
