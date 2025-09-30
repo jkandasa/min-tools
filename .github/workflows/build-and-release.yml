@@ -54,6 +54,15 @@ jobs:
         cd stats
         go build -ldflags="-s -w" -trimpath -o ../bin/min-stats-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} main.go
 
+    - name: Build generate-s3-data tool
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        CGO_ENABLED: 0
+      run: |
+        cd generate-s3-data
+        go build -ldflags="-s -w" -trimpath -o ../bin/generate-s3-data-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} .
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -77,7 +86,7 @@ jobs:
       run: |
         mkdir -p release
         # Copy all binaries from artifact directories
-        find artifacts -type f \( -name "bucket-summary-*" -o -name "min-stats-*" \) | while read file; do
+        find artifacts -type f \( -name "bucket-summary-*" -o -name "min-stats-*" -o -name "generate-s3-data-*" \) | while read file; do
           cp "$file" release/
         done
         echo "Files in release directory:"
@@ -125,6 +134,13 @@ jobs:
         - macOS ARM64 (Apple Silicon): \`min-stats-darwin-arm64\`
         - Windows AMD64: \`min-stats-windows-amd64.exe\`
 
+        #### generate-s3-data tool
+        - Linux AMD64: \`generate-s3-data-linux-amd64\`
+        - Linux ARM64: \`generate-s3-data-linux-arm64\`
+        - macOS AMD64: \`generate-s3-data-darwin-amd64\`
+        - macOS ARM64 (Apple Silicon): \`generate-s3-data-darwin-arm64\`
+        - Windows AMD64: \`generate-s3-data-windows-amd64.exe\`
+
         ### Installation
 
         Download the appropriate binary for your platform and make it executable:
@@ -133,6 +149,10 @@ jobs:
         # Linux/macOS example
         chmod +x bucket-summary-linux-amd64
         ./bucket-summary-linux-amd64
+        
+        # Or for generate-s3-data tool
+        chmod +x generate-s3-data-linux-amd64
+        ./generate-s3-data-linux-amd64 --help
         \`\`\`
         EOF
 
