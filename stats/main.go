@@ -159,7 +159,7 @@ func main() {
 					continue
 				}
 				fmt.Printf("edition=%s, version=%s, commit_id=%s\n", server.Edition, server.Version, server.CommitID)
-				fmt.Printf("mem_stats_[alloc=%s, total=%s], ilm_expiry_in_progress=%v, uptime=%s\n", humanize.IBytes(server.MemStats.Alloc), humanize.IBytes(server.MemStats.TotalAlloc), server.ILMExpiryInProgress, humanizeDuration(time.Duration(server.Uptime)*time.Second))
+				fmt.Printf("mem_stats_alloc=%s, ilm_expiry_in_progress=%v, uptime=%s\n", humanize.IBytes(server.MemStats.Alloc), server.ILMExpiryInProgress, humanizeDuration(time.Duration(server.Uptime)*time.Second))
 				fmt.Println()
 			}
 		}
@@ -248,7 +248,23 @@ func main() {
 		}
 	}
 	// print drive status
-	fmt.Printf("\n%+v\n", _driveStatus)
+	// fmt.Printf("\n%+v\n", _driveStatus)
+	// print pool status
+	fmt.Println()
+	fmt.Println("Drive status:")
+	for poolIndex, status := range _driveStatus {
+		fmt.Printf("Pool=%d: ", poolIndex+1)
+		statusKeys := []string{}
+		for statusKey := range status {
+			statusKeys = append(statusKeys, statusKey)
+		}
+		sort.Strings(statusKeys)
+		statusParts := []string{}
+		for _, statusKey := range statusKeys {
+			statusParts = append(statusParts, fmt.Sprintf("%s=%d", statusKey, status[statusKey]))
+		}
+		fmt.Println(strings.Join(statusParts, ", "))
+	}
 	printOverall(infoStruct)
 
 	// drawTable()
@@ -276,7 +292,7 @@ func printOverall(infoStruct clusterStruct) {
 	fmt.Printf("totalSets=%v, standardSCParity=%d, rrSCParity=%d, totalDriversPerSet=%v\n",
 		infoStruct.Info.Backend.TotalSets, infoStruct.Info.Backend.StandardSCParity, infoStruct.Info.Backend.RRSCParity, infoStruct.Info.Backend.DrivesPerSet)
 	// print buckets, objects, versions, and deletemarkers
-	fmt.Printf("buckets=%d, objects=%d, versions=%d, deletemarkers=%d, usage=%s\n",
+	fmt.Printf("scanner_status: buckets=%d, objects=%d, versions=%d, deletemarkers=%d, usage=%s\n",
 		infoStruct.Info.Buckets.Count, infoStruct.Info.Objects.Count, infoStruct.Info.Versions.Count, infoStruct.Info.DeleteMarkers.Count, humanize.IBytes(infoStruct.Info.Usage.Size))
 	fmt.Printf("drive_raw_stats: drives=%d, total=%s, used=%s, free=%s\n", noDrives, humanize.IBytes(rawTotalSize), humanize.IBytes(rawUsedSize), humanize.IBytes(rawTotalSize-rawUsedSize))
 }
