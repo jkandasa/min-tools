@@ -26,18 +26,26 @@ type BucketSummary struct {
 // MetricParser parses Prometheus metrics
 type MetricParser struct {
 	buckets map[string]*BucketSummary
+	// Cluster-level aggregates (used as fallback when per-bucket metrics are absent)
+	ClusterObjects     int64
+	ClusterBytes       int64
+	ClusterVersionDist map[string]int64
+	ClusterSizeDist    map[string]int64
 }
 
 // DisplayOptions controls what information to show
 type DisplayOptions struct {
 	ShowVersions bool // Show version distribution
 	ShowSizes    bool // Show size distribution
+	Cluster      bool // Force include cluster-level aggregates
 }
 
 // NewMetricParser creates a new metric parser
 func NewMetricParser() *MetricParser {
 	return &MetricParser{
-		buckets: make(map[string]*BucketSummary),
+		buckets:            make(map[string]*BucketSummary),
+		ClusterVersionDist: make(map[string]int64),
+		ClusterSizeDist:    make(map[string]int64),
 	}
 }
 
@@ -141,7 +149,16 @@ func formatSizeDistribution(sizeDist map[string]int64) string {
 	// Order the ranges for better readability (smallest to largest)
 	rangeOrder := []string{
 		"LESS_THAN_1024_B",
+		// 1KB-64KB (sometimes labeled BETWEEN_1024_B_AND_64_KB)
+		"BETWEEN_1024_B_AND_64_KB",
+		// various KB ranges
+		"BETWEEN_64_KB_AND_256_KB",
+		"BETWEEN_256_KB_AND_512_KB",
+		"BETWEEN_512_KB_AND_1_MB",
+		// 1KB-1MB (sometimes labeled BETWEEN_1024B_AND_1_MB or BETWEEN_1024_B_AND_1_MB)
 		"BETWEEN_1024_B_AND_1_MB",
+		"BETWEEN_1024B_AND_1_MB",
+		// MB ranges
 		"BETWEEN_1_MB_AND_10_MB",
 		"BETWEEN_10_MB_AND_64_MB",
 		"BETWEEN_64_MB_AND_128_MB",
@@ -154,7 +171,15 @@ func formatSizeDistribution(sizeDist map[string]int64) string {
 			switch rangeKey {
 			case "LESS_THAN_1024_B":
 				parts = append(parts, fmt.Sprintf("<1KB: %d", count))
-			case "BETWEEN_1024_B_AND_1_MB":
+			case "BETWEEN_1024_B_AND_64_KB":
+				parts = append(parts, fmt.Sprintf("1KB-64KB: %d", count))
+			case "BETWEEN_64_KB_AND_256_KB":
+				parts = append(parts, fmt.Sprintf("64KB-256KB: %d", count))
+			case "BETWEEN_256_KB_AND_512_KB":
+				parts = append(parts, fmt.Sprintf("256KB-512KB: %d", count))
+			case "BETWEEN_512_KB_AND_1_MB":
+				parts = append(parts, fmt.Sprintf("512KB-1MB: %d", count))
+			case "BETWEEN_1024_B_AND_1_MB", "BETWEEN_1024B_AND_1_MB":
 				parts = append(parts, fmt.Sprintf("1KB-1MB: %d", count))
 			case "BETWEEN_1_MB_AND_10_MB":
 				parts = append(parts, fmt.Sprintf("1-10MB: %d", count))
@@ -183,8 +208,11 @@ func getSizeStatus(sizeDist map[string]int64) string {
 		return "Unknown"
 	}
 
-	small := sizeDist["LESS_THAN_1024_B"] + sizeDist["BETWEEN_1024_B_AND_1_MB"]
+	// small: <1KB + 1KB-1MB (and KB subranges)
+	small := sizeDist["LESS_THAN_1024_B"] + sizeDist["BETWEEN_1024_B_AND_64_KB"] + sizeDist["BETWEEN_1024_B_AND_1_MB"] + sizeDist["BETWEEN_1024B_AND_1_MB"] + sizeDist["BETWEEN_64_KB_AND_256_KB"] + sizeDist["BETWEEN_256_KB_AND_512_KB"] + sizeDist["BETWEEN_512_KB_AND_1_MB"]
+	// medium: 1-10MB and 10-64MB
 	medium := sizeDist["BETWEEN_1_MB_AND_10_MB"] + sizeDist["BETWEEN_10_MB_AND_64_MB"]
+	// large: >=64MB
 	large := sizeDist["BETWEEN_64_MB_AND_128_MB"] + sizeDist["BETWEEN_128_MB_AND_512_MB"] + sizeDist["GREATER_THAN_512_MB"]
 
 	total := small + medium + large
@@ -237,21 +265,57 @@ func extractRange(line string) string {
 	return ""
 }
 
+// normalizeRange fixes inconsistent naming in range labels so the rest of the code
+// can use a canonical set of keys. Examples:
+//
+//	BETWEEN_1024B_AND_1_MB -> BETWEEN_1024_B_AND_1_MB
+//
+// It inserts an underscore between digits and letters where missing and collapses
+// multiple underscores.
+func normalizeRange(r string) string {
+	if r == "" {
+		return r
+	}
+	// Insert underscore between digit and letter transitions without losing digits.
+	var b strings.Builder
+	s := r
+	n := len(s)
+	for i := 0; i < n; i++ {
+		b.WriteByte(s[i])
+		if i+1 < n {
+			if isDigit(s[i]) && isLetter(s[i+1]) {
+				b.WriteByte('_')
+			}
+		}
+	}
+	cur := b.String()
+	// Collapse multiple underscores
+	for strings.Contains(cur, "__") {
+		cur = strings.ReplaceAll(cur, "__", "_")
+	}
+	return cur
+}
+
+func isDigit(c byte) bool {
+	return c >= '0' && c <= '9'
+}
+
+func isLetter(c byte) bool {
+	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+}
+
 // extractValue extracts the metric value from the line
 func extractValue(line string) int64 {
 	parts := strings.Fields(line)
 	if len(parts) > 0 {
 		// Get the last part which should be the value
 		valueStr := parts[len(parts)-1]
-		// Handle scientific notation
-		if strings.Contains(valueStr, "e+") {
-			if value, err := strconv.ParseFloat(valueStr, 64); err == nil {
-				return int64(value)
-			}
-		} else {
-			if value, err := strconv.ParseInt(valueStr, 10, 64); err == nil {
-				return value
-			}
+		// Try integer first, then float (to handle scientific notation like 1.23e+08)
+		if value, err := strconv.ParseInt(valueStr, 10, 64); err == nil {
+			return value
+		}
+		if valueF, err := strconv.ParseFloat(valueStr, 64); err == nil {
+			return int64(valueF)
 		}
 	}
 	return 0
@@ -286,7 +350,39 @@ func (mp *MetricParser) ParseFile(filename string) error {
 		}
 
 		bucketName := extractBucketName(line)
+		// If there's no bucket label, it might be a cluster-level metric. Parse those as fallback.
 		if bucketName == "" {
+			// Cluster object count
+			if strings.Contains(line, "minio_cluster_usage_object_total") {
+				mp.ClusterObjects += extractValue(line)
+				continue
+			}
+
+			// Cluster size
+			if strings.Contains(line, "minio_cluster_usage_total_bytes") {
+				mp.ClusterBytes += extractValue(line)
+				continue
+			}
+
+			// Cluster version distribution
+			if strings.Contains(line, "minio_cluster_objects_version_distribution") {
+				rangeValue := extractRange(line)
+				if rangeValue != "" {
+					mp.ClusterVersionDist[normalizeRange(rangeValue)] += extractValue(line)
+				}
+				continue
+			}
+
+			// Cluster size distribution
+			if strings.Contains(line, "minio_cluster_objects_size_distribution") {
+				rangeValue := extractRange(line)
+				if rangeValue != "" {
+					mp.ClusterSizeDist[normalizeRange(rangeValue)] += extractValue(line)
+				}
+				continue
+			}
+
+			// No bucket and not a cluster metric we care about
 			continue
 		}
 
@@ -323,7 +419,7 @@ func (mp *MetricParser) ParseFile(filename string) error {
 			rangeValue := extractRange(line)
 			if rangeValue != "" {
 				value := extractValue(line)
-				bucket.VersionDistribution[rangeValue] += value
+				bucket.VersionDistribution[normalizeRange(rangeValue)] += value
 			}
 		}
 
@@ -332,7 +428,7 @@ func (mp *MetricParser) ParseFile(filename string) error {
 			rangeValue := extractRange(line)
 			if rangeValue != "" {
 				value := extractValue(line)
-				bucket.SizeDistribution[rangeValue] += value
+				bucket.SizeDistribution[normalizeRange(rangeValue)] += value
 			}
 		}
 	}
@@ -361,8 +457,25 @@ func (mp *MetricParser) PrintSummaryTable(opts DisplayOptions) {
 	summaries := mp.GetSummary()
 
 	if len(summaries) == 0 {
-		fmt.Println("No bucket data found")
-		return
+		// If no per-bucket data, but cluster aggregates exist, print cluster summary
+		if mp.ClusterObjects > 0 || mp.ClusterBytes > 0 || len(mp.ClusterVersionDist) > 0 || len(mp.ClusterSizeDist) > 0 {
+			fmt.Println("No per-bucket data found; showing cluster-level aggregates instead")
+
+			// Create temporary summary row for cluster
+			cluster := &BucketSummary{
+				Name:                "<cluster-aggregate>",
+				ObjectCount:         mp.ClusterObjects,
+				SizeBytes:           mp.ClusterBytes,
+				SizeHuman:           formatBytes(mp.ClusterBytes),
+				VersionDistribution: mp.ClusterVersionDist,
+				SizeDistribution:    mp.ClusterSizeDist,
+			}
+
+			summaries = append(summaries, cluster)
+		} else {
+			fmt.Println("No bucket data found")
+			return
+		}
 	}
 
 	// Create tabwriter for aligned output with proper spacing
@@ -387,6 +500,34 @@ func (mp *MetricParser) PrintSummaryTable(opts DisplayOptions) {
 	var totalBytes int64
 
 	// Print bucket data
+	// If user requested cluster-level aggregate explicitly and we have cluster data, append it
+	if opts.Cluster && (mp.ClusterObjects > 0 || mp.ClusterBytes > 0 || len(mp.ClusterVersionDist) > 0 || len(mp.ClusterSizeDist) > 0) {
+		// Avoid duplicating if summaries already contains the cluster-aggregate entry
+		found := false
+		for _, b := range summaries {
+			if b.Name == "<cluster-aggregate>" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			cluster := &BucketSummary{
+				Name:                "<cluster-aggregate>",
+				ObjectCount:         mp.ClusterObjects,
+				SizeBytes:           mp.ClusterBytes,
+				SizeHuman:           formatBytes(mp.ClusterBytes),
+				VersionDistribution: mp.ClusterVersionDist,
+				SizeDistribution:    mp.ClusterSizeDist,
+			}
+			summaries = append(summaries, cluster)
+
+			// Re-sort after adding cluster aggregate so it fits into the ordering
+			sort.Slice(summaries, func(i, j int) bool {
+				return summaries[i].SizeBytes > summaries[j].SizeBytes
+			})
+		}
+	}
+
 	for _, bucket := range summaries {
 		// Truncate bucket name if too long
 		bucketName := bucket.Name
@@ -464,8 +605,48 @@ func (mp *MetricParser) PrintTopBuckets(n int, opts DisplayOptions) {
 	summaries := mp.GetSummary()
 
 	if len(summaries) == 0 {
-		fmt.Println("No bucket data found")
-		return
+		// Fallback to cluster-level aggregates if available
+		if mp.ClusterObjects > 0 || mp.ClusterBytes > 0 || len(mp.ClusterVersionDist) > 0 || len(mp.ClusterSizeDist) > 0 {
+			cluster := &BucketSummary{
+				Name:                "<cluster-aggregate>",
+				ObjectCount:         mp.ClusterObjects,
+				SizeBytes:           mp.ClusterBytes,
+				SizeHuman:           formatBytes(mp.ClusterBytes),
+				VersionDistribution: mp.ClusterVersionDist,
+				SizeDistribution:    mp.ClusterSizeDist,
+			}
+			summaries = append(summaries, cluster)
+		} else {
+			fmt.Println("No bucket data found")
+			return
+		}
+	}
+
+	// If user requested cluster-level aggregate explicitly and we have cluster data, append it
+	if opts.Cluster && (mp.ClusterObjects > 0 || mp.ClusterBytes > 0 || len(mp.ClusterVersionDist) > 0 || len(mp.ClusterSizeDist) > 0) {
+		found := false
+		for _, b := range summaries {
+			if b.Name == "<cluster-aggregate>" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			cluster := &BucketSummary{
+				Name:                "<cluster-aggregate>",
+				ObjectCount:         mp.ClusterObjects,
+				SizeBytes:           mp.ClusterBytes,
+				SizeHuman:           formatBytes(mp.ClusterBytes),
+				VersionDistribution: mp.ClusterVersionDist,
+				SizeDistribution:    mp.ClusterSizeDist,
+			}
+			summaries = append(summaries, cluster)
+
+			// Re-sort after adding cluster aggregate so it fits into the ordering
+			sort.Slice(summaries, func(i, j int) bool {
+				return summaries[i].SizeBytes > summaries[j].SizeBytes
+			})
+		}
 	}
 
 	if n > len(summaries) {
@@ -523,25 +704,48 @@ func main() {
 	var topN = 5 // default
 	var opts DisplayOptions
 
-	// Parse command line arguments
+	// Parse command line arguments (flags may appear before or after filename)
 	args := os.Args[1:]
-	filename = args[0]
-
-	for i := 1; i < len(args); i++ {
-		arg := args[i]
+	for _, arg := range args {
 		switch arg {
 		case "--versions":
 			opts.ShowVersions = true
 		case "--sizes":
 			opts.ShowSizes = true
+		case "--cluster":
+			opts.Cluster = true
 		case "--both":
 			opts.ShowVersions = true
 			opts.ShowSizes = true
+		case "--help", "-h":
+			fmt.Printf("Usage: %s <prometheus_metrics_file> [options] [top_n]\n", os.Args[0])
+			fmt.Println("Options:")
+			fmt.Println("  --versions    Show version distribution information")
+			fmt.Println("  --sizes       Show size distribution information")
+			fmt.Println("  --cluster     Force include cluster-level aggregates")
+			fmt.Println("  --both        Show both version and size distribution")
+			fmt.Println("  --help, -h    Show this help message")
+			fmt.Println("Examples:")
+			fmt.Printf("  %s sample.txt\n", os.Args[0])
+			fmt.Printf("  %s sample.txt --versions\n", os.Args[0])
+			fmt.Printf("  %s sample.txt --sizes 10\n", os.Args[0])
+			fmt.Printf("  %s sample.txt --both 5\n", os.Args[0])
+			os.Exit(0)
 		default:
+			// Non-flag; could be filename or topN
 			if n, err := strconv.Atoi(arg); err == nil {
 				topN = n
+				continue
+			}
+			if filename == "" {
+				filename = arg
 			}
 		}
+	}
+
+	if filename == "" {
+		fmt.Printf("Usage: %s <prometheus_metrics_file> [options] [top_n]\n", os.Args[0])
+		os.Exit(1)
 	}
 
 	// Default: show basic columns only (no versions/sizes unless explicitly requested)

@@ -18,6 +18,10 @@ The tool specifically looks for these MinIO metrics:
 - `minio_bucket_usage_object_total` - Total number of objects per bucket
 - `minio_bucket_usage_total_bytes` - Total bucket size in bytes
 - **`minio_bucket_objects_version_distribution`** - Object versioning distribution per bucket
+- `minio_cluster_usage_object_total` - Total objects in cluster (fallback)
+- `minio_cluster_usage_total_bytes` - Total bytes in cluster (fallback)
+- `minio_cluster_objects_version_distribution` - Cluster-level version distribution (fallback)
+- `minio_cluster_objects_size_distribution` - Cluster-level size distribution (fallback)
 
 ### Version Distribution Ranges:
 - `UNVERSIONED` - Objects without versioning enabled
@@ -48,6 +52,9 @@ go build -o bucket_summary bucket_summary.go
 
 # Show both version and size distribution
 ./bucket_summary sample.txt --both
+
+# Include cluster-level aggregates even when per-bucket metrics exist
+./bucket_summary sample.txt --cluster
 
 # Show top 10 buckets with size distribution
 ./bucket_summary sample.txt --sizes 10
@@ -125,6 +132,7 @@ Top 5 Buckets by Size:
 - **Smart versioning status**: Determines if buckets are Unversioned, Single Version, Multi-Version, or Mixed
 - **Sorting**: Sorts buckets by size in descending order
 - **Formatted output**: Uses tabwriter for clean, aligned table output
+ - **Range normalization**: The tool normalizes inconsistent range label keys (for example, `BETWEEN_1024B_AND_1_MB` and `BETWEEN_1024_B_AND_1_MB` are treated identically)
 
 ## Example Input Format
 

@@ -16,6 +16,9 @@ echo
 echo "3. Show top 3 buckets:"
 echo "   ./bucket_summary sample.txt 3"
 echo
+echo "4. Include cluster-level aggregates (force cluster summary):"
+echo "   ./bucket_summary sample.txt --cluster"
+echo
 
 echo "4. Using make commands:"
 echo "   make build      # Build the tool"

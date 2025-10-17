@@ -46,6 +46,7 @@ This tool analyzes MinIO Prometheus metrics to provide comprehensive bucket-leve
 - **--versions**: Include version distribution
 - **--sizes**: Include size distribution
 - **--both**: Include both distributions
+ - **--cluster**: Force include cluster-level aggregates (parses cluster metrics when per-bucket metrics are absent or when explicitly requested)
 - **Limit**: Show top N buckets (default: 5, or all)
 
 ### Command Line Interface
@@ -77,6 +78,12 @@ This tool analyzes MinIO Prometheus metrics to provide comprehensive bucket-leve
 - `minio_bucket_usage_object_total`: Total objects per bucket
 - `minio_bucket_usage_total_bytes`: Total bytes per bucket
 
+### Cluster-level Metrics (fallbacks)
+- `minio_cluster_usage_object_total`: Total objects in cluster (used as fallback when per-bucket metrics are absent)
+- `minio_cluster_usage_total_bytes`: Total bytes in cluster (used as fallback when per-bucket metrics are absent)
+- `minio_cluster_objects_version_distribution`: Cluster-wide version distribution
+- `minio_cluster_objects_size_distribution`: Cluster-wide size distribution
+
 ### Version Distribution
 - `minio_bucket_objects_version_distribution`: Object version counts by range
 
@@ -97,6 +104,7 @@ This tool analyzes MinIO Prometheus metrics to provide comprehensive bucket-leve
 - **Scientific Notation Handling**: Supports large numbers
 - **Memory Efficient**: Processes large metric files
 - **Error Resilient**: Continues processing despite individual metric errors
+ - **Range Normalization**: Normalizes inconsistent range label keys (for example, `BETWEEN_1024B_AND_1_MB` and `BETWEEN_1024_B_AND_1_MB` are treated identically)
 
 
 This tool provides comprehensive insights into MinIO storage usage patterns, helping administrators optimize storage strategies and understand data distribution across their object storage infrastructure.
