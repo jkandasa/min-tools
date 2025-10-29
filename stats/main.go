@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -111,6 +110,9 @@ func main() {
 			poolIndex := disk.PoolIndex
 			setIndex := disk.SetIndex
 
+			// fmt.Println("Processing disk for endpoint:", endpointNameWithDrive)
+			// fmt.Printf("poolIndex=%d, setIndex=%d\n", poolIndex, setIndex)
+
 			ecStatus, ok := pools[poolIndex]
 
 			if !ok {
@@ -130,6 +132,7 @@ func main() {
 
 			pools[poolIndex] = ecStatus
 		}
+
 	}
 
 	for poolIndex, ecStatus := range pools {
@@ -144,7 +147,7 @@ func main() {
 		}
 
 		// sort server names
-		slices.Sort(serverNames)
+		sort.Sort(sortorder.Natural(serverNames))
 
 		for _, serverName := range serverNames {
 			server, found := serversData[serverName]
