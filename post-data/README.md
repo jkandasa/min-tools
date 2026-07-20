@@ -15,7 +15,7 @@ make build
 ## Usage
 
 ```
-post-data -o bucket/path/to/key -d "hello world"
+post-data --alias myminio -o bucket/path/to/key -d "hello world"
 ```
 
 The object (`-o`) is always `bucket/key`. When using `--alias`, you don't
@@ -87,8 +87,9 @@ reads an object's age.
 Each upload carries the resolved timestamp in two different places:
 
 1. **`SourceMTime`** - a low-level PutObject option MinIO uses internally
-   (e.g. for replication/mirroring source timestamps). It isn't exposed as
-   ordinary object metadata, so you can't query it back directly.
+   (e.g. for replication/mirroring source timestamps), sent over the wire as
+   the `X-Minio-Source-Mtime` request header. It isn't exposed as ordinary
+   object metadata, so you can't query it back directly.
 2. **`x-posted-timestamp`** - an ordinary user-metadata key this tool adds to
    every object, holding the same timestamp in RFC3339/UTC. This is the one
    you'll actually see with `mc stat` or an S3 `HeadObject`, so it's the
@@ -152,5 +153,5 @@ Verify the posted timestamp afterward:
 
 ```
 mc stat myminio/mybucket/hello.txt
-# look for the x-posted-timestamp entry under "User metadata"
+# look for the X-Amz-Meta-X-Posted-Timestamp entry under "Metadata"
 ```
