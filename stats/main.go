@@ -35,6 +35,7 @@ type driveStatus struct {
 	UsedInodes uint64
 	FreeInodes uint64
 	Metrics    *madmin.DiskMetrics
+	IsHealing  bool
 }
 
 func main() {
@@ -95,6 +96,7 @@ func main() {
 				FreeInodes: disk.FreeInodes,
 				Status:     disk.State,
 				Metrics:    disk.Metrics,
+				IsHealing:  disk.Healing,
 			}
 
 			// update endpoint name with drive path
@@ -135,7 +137,14 @@ func main() {
 
 	}
 
-	for poolIndex, ecStatus := range pools {
+	poolIndices := []int{}
+	for poolIndex := range pools {
+		poolIndices = append(poolIndices, poolIndex)
+	}
+	sort.Ints(poolIndices)
+
+	for _, poolIndex := range poolIndices {
+		ecStatus := pools[poolIndex]
 		// print server information
 		fmt.Printf("\nPool=%d, Servers\n", poolIndex+1)
 		serverNames := []string{}
@@ -226,11 +235,17 @@ func main() {
 				diskUsage := ""
 				if disk.TotalSpace != 0 && disk.FreeInodes != 0 {
 					totalInodes := disk.UsedInodes + disk.FreeInodes
-					diskUsage = fmt.Sprintf("disk=%.0f%%[%s], inode=%.0f%% ",
+					isHealing := ""
+					if disk.IsHealing {
+						isHealing = "[H]"
+					}
+					diskUsage = fmt.Sprintf("disk=%.0f%%[%s]%s, inode=%.0f%% ",
 						float64(disk.UsedSpace)/float64(disk.TotalSpace)*100.0,
 						humanize.IBytes(disk.TotalSpace),
+						isHealing,
 						float64(disk.UsedInodes)/float64(totalInodes)*100.0,
 					)
+
 				}
 
 				fmt.Printf("%s = %s %s%s\n", endpoint, disk.Status, diskUsage, metricData)
@@ -255,7 +270,14 @@ func main() {
 	// print pool status
 	fmt.Println()
 	fmt.Println("Drive status:")
-	for poolIndex, status := range _driveStatus {
+	drivePoolIndices := []int{}
+	for poolIndex := range _driveStatus {
+		drivePoolIndices = append(drivePoolIndices, poolIndex)
+	}
+	sort.Ints(drivePoolIndices)
+
+	for _, poolIndex := range drivePoolIndices {
+		status := _driveStatus[poolIndex]
 		fmt.Printf("Pool=%d: ", poolIndex+1)
 		statusKeys := []string{}
 		for statusKey := range status {
