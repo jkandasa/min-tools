@@ -261,6 +261,10 @@ func main() {
 
 				poolStatus[disk.Status] = _status + 1
 
+				if disk.IsHealing {
+					poolStatus["healing"] = poolStatus["healing"] + 1
+				}
+
 				_driveStatus[poolIndex] = poolStatus
 			}
 		}
@@ -281,12 +285,21 @@ func main() {
 		fmt.Printf("Pool=%d: ", poolIndex+1)
 		statusKeys := []string{}
 		for statusKey := range status {
+			if statusKey == "healing" {
+				continue
+			}
 			statusKeys = append(statusKeys, statusKey)
 		}
 		sort.Strings(statusKeys)
 		statusParts := []string{}
 		for _, statusKey := range statusKeys {
-			statusParts = append(statusParts, fmt.Sprintf("%s=%d", statusKey, status[statusKey]))
+			part := fmt.Sprintf("%s=%d", statusKey, status[statusKey])
+			if statusKey == "ok" {
+				if healing, ok := status["healing"]; ok {
+					part = fmt.Sprintf("%s (healing=%d)", part, healing)
+				}
+			}
+			statusParts = append(statusParts, part)
 		}
 		fmt.Println(strings.Join(statusParts, ", "))
 	}
@@ -296,6 +309,12 @@ func main() {
 
 }
 
+type rawStats struct {
+	drives int
+	total  uint64
+	used   uint64
+}
+
 func printOverall(infoStruct clusterStruct) {
 	// disk raw details
 	var rawTotalSize uint64 = 0
@@ -303,12 +322,23 @@ func printOverall(infoStruct clusterStruct) {
 
 	noDrives := 0
 
+	poolStats := map[int]*rawStats{}
+
 	for _, server := range infoStruct.Info.Servers {
 		for _, disk := range server.Disks {
 			// update size
 			rawTotalSize += disk.TotalSpace
 			rawUsedSize += disk.UsedSpace
 			noDrives++
+
+			stats, ok := poolStats[disk.PoolIndex]
+			if !ok {
+				stats = &rawStats{}
+				poolStats[disk.PoolIndex] = stats
+			}
+			stats.drives++
+			stats.total += disk.TotalSpace
+			stats.used += disk.UsedSpace
 		}
 	}
 
@@ -319,7 +349,21 @@ func printOverall(infoStruct clusterStruct) {
 	// print buckets, objects, versions, and deletemarkers
 	fmt.Printf("scanner_status: buckets=%d, objects=%d, versions=%d, deletemarkers=%d, usage=%s\n",
 		infoStruct.Info.Buckets.Count, infoStruct.Info.Objects.Count, infoStruct.Info.Versions.Count, infoStruct.Info.DeleteMarkers.Count, humanize.IBytes(infoStruct.Info.Usage.Size))
-	fmt.Printf("drive_raw_stats: drives=%d, total=%s, used=%s, free=%s\n", noDrives, humanize.IBytes(rawTotalSize), humanize.IBytes(rawUsedSize), humanize.IBytes(rawTotalSize-rawUsedSize))
+	poolIndices := []int{}
+	for poolIndex := range poolStats {
+		poolIndices = append(poolIndices, poolIndex)
+	}
+	sort.Ints(poolIndices)
+
+	fmt.Println("drive_raw_stats: ")
+	for _, poolIndex := range poolIndices {
+		stats := poolStats[poolIndex]
+		fmt.Printf("    pool=%d, drives=%d, total=%s, used=%s, free=%s\n",
+			poolIndex+1, stats.drives, humanize.IBytes(stats.total), humanize.IBytes(stats.used), humanize.IBytes(stats.total-stats.used))
+	}
+	if len(poolIndices) > 1 {
+		fmt.Printf("    pool=all, drives=%d, total=%s, used=%s, free=%s\n", noDrives, humanize.IBytes(rawTotalSize), humanize.IBytes(rawUsedSize), humanize.IBytes(rawTotalSize-rawUsedSize))
+	}
 }
 
 func trimDomainData(endpoint, domainString string) string {

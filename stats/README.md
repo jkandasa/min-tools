@@ -14,6 +14,8 @@ This tool processes MinIO cluster diagnostic data (typically from `mc admin info
 
 ```bash
 go run main.go <filename> [domain-string]
+# or, after building (see Building below)
+./min-stats <filename> [domain-string]
 ```
 
 ### Parameters
@@ -58,16 +60,31 @@ The tool displays:
 - Total sets and parity configuration
 - Bucket, object, version, and delete marker counts
 - Total storage usage
-- Raw drive statistics
+- Raw drive statistics (`drive_raw_stats`), broken down per pool (`pool=1`, `pool=2`, ...), with an aggregated `pool=all` line when the cluster has more than one pool:
+  ```
+  drive_raw_stats:
+      pool=1, drives=64, total=466 TiB, used=374 TiB, free=91 TiB
+      pool=2, drives=192, total=559 TiB, used=36 TiB, free=523 TiB
+      pool=all, drives=256, total=1.0 PiB, used=410 TiB, free=614 TiB
+  ```
 
 ### Drive Status Summary
 A summary map showing the count of drives in each state per pool.
 
 ## Building
 
+Using `go` directly:
+
 ```bash
 go mod download
-go build -o minio-stats main.go
+go build -o min-stats .
+```
+
+Or using the provided `Makefile` (always builds a slim binary via `-trimpath -ldflags="-s -w"`):
+
+```bash
+make build   # -> ./min-stats
+make clean   # remove the built binary
 ```
 
 ## Data Structures
