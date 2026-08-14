@@ -1,13 +1,10 @@
-# Binaries
-minio-metrics-collector
+# Binaries, anchored so cmd/min-collector is still tracked
+/min-collector
+/min-collector-*
 *.exe
 *.dll
 *.so
 *.dylib
-
-metrics
-*.csv
-minio-metrics
 
 # Test binary, built with `go test -c`
 *.test
@@ -20,10 +17,16 @@ vendor/
 
 # Go workspace file
 go.work
+go.work.sum
 
-# Metrics output directory
-metrics/
+# Collected data, anchored so internal/metrics is still tracked
+/collected/
+/metrics/
 *.csv
+*.ndjson
+*.gz
+*.zst
+*.xz
 
 # Log files
 *.log

@@ -4,6 +4,12 @@ Collection of tools for MinIO administration and monitoring.
 
 ## Tools
 
+- **[min-collector/](min-collector/)** - MinIO log, audit and metrics collector
+  - Receives server logs and audit events from the MinIO webhooks
+  - Optionally scrapes Prometheus metrics on an interval
+  - Rotates, compresses and prunes the collected files
+  - Configurable listening address, webhook paths and retention
+
 - **[prometheus/](prometheus/)** - MinIO bucket summary tool for Prometheus metrics
   - Parses MinIO Prometheus metrics
   - Generates bucket-level statistics
